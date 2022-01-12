@@ -1,7 +1,11 @@
 package com.shackshake.fo4squardmaker.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shackshake.fo4squardmaker.entity.Club;
 import com.shackshake.fo4squardmaker.entity.Player;
+import com.shackshake.fo4squardmaker.entity.PlayerClub;
+import com.shackshake.fo4squardmaker.repository.ClubRepository;
+import com.shackshake.fo4squardmaker.repository.PlayerClubRepository;
 import com.shackshake.fo4squardmaker.repository.PlayerRepository;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -21,6 +25,9 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
+import javax.persistence.TypedQuery;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -41,15 +48,17 @@ import static org.assertj.core.api.Assertions.*;
 //@DataJpaTest
 @SpringBootTest
 class StaticDataLoaderTest {
-    private final static long SALAH_PID = 209331;
-    private final static long RAMOS_PID = 155862;
-    private final static long PID_MOD = 1000000;
+    private final static long SALAH_PID = 209331L;
+    private final static long RAMOS_PID = 155862L;
+    private final static long PID_MOD = 1000000L;
 
     private final static String PLAYER_DETAIL_URL = "https://fifaonline4.inven.co.kr/dataninfo/player/?code=";
 
+    @PersistenceContext EntityManager em;
 
-    @Autowired
-    private PlayerRepository playerRepository;
+    @Autowired private PlayerRepository playerRepository;
+    @Autowired private ClubRepository clubRepository;
+    @Autowired private PlayerClubRepository playerClubRepository;
 
     @Test
     void loadAndSaveSelectedSpidJson() {
@@ -105,8 +114,39 @@ class StaticDataLoaderTest {
             int d = clubWithYear.indexOf(closedLi);
 
             String club = clubWithYear.substring(s, d);
+            System.out.println(club);
             assertThat(club).isEqualTo(validclubs[idx++]);
         }
+    }
+
+    @Test
+    void mappingPlayerAndClub() {
+        // 살라로 테스트
+        final String[] CLUBS_OF_SALAH = {"리버풀", "로마 FC", "첼시", "FC 바젤 1893", "엘모카울룬 알아랍"};
+
+        String jpql = "SELECT p FROM Player p WHERE (ID % 1000000L) = :pid";
+        TypedQuery<Player> query = em.createQuery(jpql, Player.class);
+        query.setParameter("pid", SALAH_PID);
+
+        List<Player> playerWithDifferentSeasonList = query.getResultList();// 왜 jpql은 Optional로 리턴 안되는지?
+        for (String clubOfPlayer : CLUBS_OF_SALAH) {
+            Optional<Club> clubOptional = clubRepository.findByName(clubOfPlayer);
+            Club club ;
+
+            if (!clubOptional.isPresent()) {
+                club = clubRepository.save(Club.builder()
+                        .name(clubOfPlayer)
+                        .build());
+            } else club = clubOptional.get();
+
+            for (Player player : playerWithDifferentSeasonList) {
+                playerClubRepository.save(PlayerClub.builder()
+                        .player(player)// 객체가 들어가야함
+                        .club(club)// 객체가 들어가야함
+                        .build());
+            }
+        }
+
     }
 
 //    @Test
